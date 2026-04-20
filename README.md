@@ -117,7 +117,7 @@ CREATE DATABASE pdyc2026;
 
 ### 3. Configurar variables de entorno (.env)
 
-Dentro de la carpeta `events/`, creá un archivo llamado `.env` con el siguiente contenido:
+En la **raíz del repositorio** (es decir, dentro de la carpeta `pdyc2026-Junin-Marveggio-Ojea-Rolla/`), creá un archivo llamado `.env` con el siguiente contenido:
 
 ```bash
 DB_NAME=pdyc2026
