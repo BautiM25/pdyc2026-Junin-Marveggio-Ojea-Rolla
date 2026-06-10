@@ -11,6 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import ar.edu.unnoba.pdyc2026.events.dto.EventSummary;
+import ar.edu.unnoba.pdyc2026.events.dto.EventDetail;
+import ar.edu.unnoba.pdyc2026.events.dto.ArtistResponse;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 @Service
 public class EventService {
@@ -20,6 +25,9 @@ public class EventService {
 
     @Autowired
     private ArtistRepository artistRepository;
+
+    @Autowired
+    private NotificationService notificationService;
 
     public List<Event> findAll(Optional<EventStatus> state) {
         return state.map(eventRepository::findByStatus)
@@ -110,8 +118,13 @@ public class EventService {
         if (!event.getStartDate().isAfter(LocalDate.now())) {
             throw new IllegalStateException("Cannot confirm event with past or today's date");
         }
+
+        EventStatus previousState = event.getStatus(); // Guardamos el estado previo (tentative)
         event.setStatus(EventStatus.confirmed);
-        eventRepository.save(event);
+        Event savedEvent = eventRepository.save(event);
+
+        // Disparamos la generación asíncrona de notificaciones
+        notificationService.createNotificationsForEventChange(savedEvent, previousState, EventStatus.confirmed);
     }
 
     @Transactional
@@ -127,9 +140,14 @@ public class EventService {
         if (!newStartDate.isAfter(LocalDate.now())) {
             throw new IllegalStateException("New date must be in the future");
         }
+
+        EventStatus previousState = event.getStatus(); // Guardamos el estado previo
         event.setStartDate(newStartDate);
         event.setStatus(EventStatus.rescheduled);
-        eventRepository.save(event);
+        Event savedEvent = eventRepository.save(event);
+
+        // Disparamos la generación asíncrona de notificaciones
+        notificationService.createNotificationsForEventChange(savedEvent, previousState, EventStatus.rescheduled);
     }
 
     @Transactional
@@ -139,7 +157,80 @@ public class EventService {
         if (event.getStatus() != EventStatus.confirmed && event.getStatus() != EventStatus.rescheduled) {
             throw new IllegalStateException("Only confirmed or rescheduled events can be cancelled");
         }
+
+        EventStatus previousState = event.getStatus(); // Guardamos el estado previo
         event.setStatus(EventStatus.cancelled);
-        eventRepository.save(event);
+        Event savedEvent = eventRepository.save(event);
+
+        // Disparamos la generación asíncrona de notificaciones
+        notificationService.createNotificationsForEventChange(savedEvent, previousState, EventStatus.cancelled);
+    }
+
+    // Para: GET /events
+    public List<EventSummary> findPublicEvents() {
+        LocalDate today = LocalDate.now();
+        // Solo se permite mostrar confirmados o reprogramados públicamente
+        List<EventStatus> allowedStatuses = Arrays.asList(EventStatus.confirmed, EventStatus.rescheduled);
+
+        return eventRepository.findByStatusIn(allowedStatuses).stream()
+                .filter(event -> !event.getStartDate().isBefore(today)) // Vigentes y próximos
+                .map(event -> new EventSummary(
+                        event.getId(),
+                        event.getName(),
+                        event.getStartDate(),
+                        event.getStatus(),
+                        event.getArtists().size()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    // Para: GET /artists/{artistId}/events
+    public List<EventSummary> findPublicEventsByArtist(Long artistId) {
+        Artist artist = artistRepository.findByIdAndActiveTrue(artistId)
+                .orElseThrow(() -> new RuntimeException("Active artist not found"));
+
+        LocalDate today = LocalDate.now();
+        List<EventStatus> allowedStatuses = Arrays.asList(EventStatus.confirmed, EventStatus.rescheduled);
+
+        return artist.getEvents().stream()
+                .filter(event -> allowedStatuses.contains(event.getStatus()))
+                .filter(event -> !event.getStartDate().isBefore(today))
+                .map(event -> new EventSummary(
+                        event.getId(),
+                        event.getName(),
+                        event.getStartDate(),
+                        event.getStatus(),
+                        event.getArtists().size()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    // Para: GET /events/{eventId}
+    public EventDetail findPublicEventDetail(Long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new RuntimeException("Event not found"));
+
+        // REGLA: NO se puede acceder a información de eventos en estado "Tentative"
+        if (event.getStatus() == EventStatus.tentative) {
+            throw new RuntimeException("Access Denied: Event is tentative");
+        }
+
+        List<ArtistResponse> artists = event.getArtists().stream()
+                .map(artist -> new ArtistResponse(
+                        artist.getId(),
+                        artist.getName(),
+                        artist.getGenre(),
+                        artist.isActive()
+                ))
+                .collect(Collectors.toList());
+
+        return new EventDetail(
+                event.getId(),
+                event.getName(),
+                event.getDescription(),
+                event.getStartDate(),
+                event.getStatus(),
+                artists
+        );
     }
 }

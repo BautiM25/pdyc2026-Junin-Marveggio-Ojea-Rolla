@@ -57,4 +57,15 @@ public class ArtistService {
             artistRepository.save(artist);
         }
     }
+
+    public List<ar.edu.unnoba.pdyc2026.events.dto.ArtistResponse> findActiveArtists() {
+    return artistRepository.findByActiveTrue().stream()
+            .map(artist -> new ar.edu.unnoba.pdyc2026.events.dto.ArtistResponse(
+                    artist.getId(),
+                    artist.getName(),
+                    artist.getGenre(),
+                    artist.isActive()
+            ))
+            .collect(java.util.stream.Collectors.toList());
+    }
 }
