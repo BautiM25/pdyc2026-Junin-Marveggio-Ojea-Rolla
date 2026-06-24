@@ -2,6 +2,7 @@ package ar.edu.unnoba.pdyc2026.events.repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -35,5 +36,5 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     // Mantenemos este igual, ya que el evento sí se guardó justo antes
     @Query("SELECT u FROM User u JOIN u.favoriteEvents e WHERE e = :event")
-    List<User> findByFavoriteEventsContains(@Param("event") Event event);
+    Set<User> findByFavoriteEventsContains(@Param("event") Event event);
 }

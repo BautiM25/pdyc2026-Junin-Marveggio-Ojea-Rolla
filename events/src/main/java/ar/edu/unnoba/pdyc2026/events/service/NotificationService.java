@@ -35,9 +35,8 @@ public class NotificationService {
     public CompletableFuture<Void> createNotificationsForEventChange(Event event, EventStatus previousState, EventStatus currentState) {
         return CompletableFuture.runAsync(() -> {
             Set<User> usersToNotify = new HashSet<>();
-
             // 1. Usuarios que tienen el evento en favoritos
-            List<User> fans = userRepository.findByFavoriteEventsContains(event);
+            Set<User> fans = userRepository.findByFavoriteEventsContains(event);
             usersToNotify.addAll(fans);
 
             // 2. Usuarios que siguen a al menos un artista participante (POR ID)
