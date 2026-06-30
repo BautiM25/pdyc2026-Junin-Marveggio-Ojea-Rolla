@@ -85,7 +85,7 @@ public class NotificationService {
     @Transactional
     public CompletableFuture<Void> markAsRead(Long notificationId, String username) {
         return CompletableFuture.runAsync(() -> {
-            Notification notification = notificationRepository.findById(notificationId)
+            Notification notification = notificationRepository.findByIdWithUser(notificationId)
                     .orElseThrow(() -> new RuntimeException("Notification not found"));
             
             if (!notification.getUser().getUsername().equalsIgnoreCase(username)) {
@@ -100,7 +100,7 @@ public class NotificationService {
     @Transactional
     public CompletableFuture<Void> deleteNotification(Long notificationId, String username) {
         return CompletableFuture.runAsync(() -> {
-            Notification notification = notificationRepository.findById(notificationId)
+            Notification notification = notificationRepository.findByIdWithUser(notificationId)
                     .orElseThrow(() -> new RuntimeException("Notification not found"));
             
             if (!notification.getUser().getUsername().equalsIgnoreCase(username)) {

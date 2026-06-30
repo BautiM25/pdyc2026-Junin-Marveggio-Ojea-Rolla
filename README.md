@@ -10,6 +10,31 @@ Proyecto backend para la gestión de eventos musicales y artistas, desarrollado 
   - Protección de todos los endpoints existentes (`/admin/artists/**` y `/admin/events/**`) mediante token JWT válido.
   - CRUD de **usuarios administradores** (obtener, crear, eliminar) usando `Keycloak Admin Client`.
   - Llamadas asíncronas a Keycloak envueltas en `CompletableFuture` para no bloquear el hilo principal.
+- **Práctica 4** completamente implementada:
+  - Gestión de usuarios finales: entidad `User` con relaciones a `artistas` (following) y `eventos` (favoritos).
+  - Registro de usuarios (`POST /auth/register`) que crea el usuario en Keycloak y en la base de datos local.
+  - Endpoints para usuarios autenticados (`/me/**`):
+    - Seguir / dejar de seguir artistas (`POST /me/following`, `DELETE /me/following/{artistId}`)
+    - Listar artistas seguidos (`GET /me/following`)
+    - Marcar / desmarcar eventos favoritos (`POST /me/favorite-events`, `DELETE /me/favorite-events/{eventId}`)
+    - Listar eventos favoritos vigentes (`GET /me/favorite-events`)
+    - Listar próximos eventos de artistas seguidos (`GET /me/following/events`)
+  - Notificaciones: se generan automáticamente cuando un evento cambia a `confirmed`, `rescheduled` o `canceled` para los usuarios que siguen a algún artista participante o tienen el evento como favorito.
+    - Endpoints: `GET /me/notifications`, `PATCH /me/notifications/{id}`, `DELETE /me/notifications/{id}`
+  - Endpoints públicos:
+    - `GET /artists` – listado de artistas activos
+    - `GET /artists/{artistId}/events` – próximos eventos confirmados o reprogramados de un artista
+    - `GET /events` – eventos vigentes y próximos (confirmados o reprogramados)
+    - `GET /events/{eventId}` – detalles de un evento (excluye estados tentative)
+  - Roles y autorización:
+    - Rol `admin` en Keycloak para usuarios administradores.
+    - `AuthenticationConverter` personalizado para extraer roles del JWT y mapearlos a GrantedAuthority.
+    - `SecurityFilterChain` configurado con políticas diferenciadas:
+      - Endpoints públicos (sin token)
+      - Endpoints de usuario autenticado (`/me/**`)
+      - Endpoints de administrador (`/admin/**`) – requieren rol `admin`
+  - Refresh Token: flujo implementado con Keycloak (configuración en Postman) para renovar el access token sin reintroducir credenciales.
+
 
 ## Tecnologías utilizadas
 
@@ -18,7 +43,7 @@ Proyecto backend para la gestión de eventos musicales y artistas, desarrollado 
 - **Spring Web** (REST API)
 - **Spring Data JPA** (ORM)
 - **Spring Security** + **OAuth2 Resource Server** (JWT)
-- **Keycloak Admin Client** (gestión de usuarios)
+- **Keycloak Admin Client** (gestión de usuarios y roles)
 - **PostgreSQL** (versión 13 o superior – testeado con v16)
 - **Maven** (wrapper incluido)
 - **Lombok** (reducción de código boilerplate)
@@ -28,30 +53,198 @@ Proyecto backend para la gestión de eventos musicales y artistas, desarrollado 
 
 ```bash
 pdyc2026-Junin-Marveggio-Ojea-Rolla/
-│   .env
-│   .gitignore
-│   README.md
-├───docker/
-│   └───docker-compose.yml
-└───events/
-    ├───pom.xml
-    ├───src/main/java/.../events/
-    │   ├───config/
-    │   │   ├───SecurityConfig.java         # OAuth2 Resource Server JWT
-    │   │   └───KeycloakAdminConfig.java    # Bean de Keycloak (client credentials)
-    │   ├───controller/
-    │   │   ├───ArtistController.java
-    │   │   ├───EventController.java
-    │   │   └───AdminUserController.java    # CRUD de usuarios
-    │   ├───dto/                            # Records (Java 21)
-    │   ├───model/                          # Entity + enums
-    │   ├───repository/                     # Spring Data JPA
-    │   └───service/
-    │       ├───ArtistService.java
-    │       ├───EventService.java
-    │       └───AdminUserService.java       # CompletableFuture hacia Keycloak
-    └───src/main/resources/
-        └───application.properties
+│   .env                                                      
+│   .gitignore                                                
+│   README.md                
+│   
+├───.github
+│   ├───java-upgrade
+│   │   │   .gitignore
+│   │   │   
+│   │   └───hooks
+│   │       └───scripts
+│   │               recordToolUse.ps1
+│   │               recordToolUse.sh
+│   │               
+│   └───modernize
+│       └───java-upgrade
+│           │   .gitignore
+│           │   
+│           └───hooks
+│               └───scripts
+│                       recordToolUse.ps1
+│                       recordToolUse.sh
+│                       
+├───.vscode
+│       settings.json
+│       
+├───docker
+│       docker-compose.yml
+│       
+└───events
+    │   .gitattributes
+    │   .gitignore
+    │   HELP.md
+    │   mvnw
+    │   mvnw.cmd
+    │   pom.xml
+    │   
+    ├───.mvn
+    │   └───wrapper
+    │           maven-wrapper.properties
+    │           
+    ├───src
+    │   ├───main
+    │   │   ├───java
+    │   │   │   └───ar
+    │   │   │       └───edu
+    │   │   │           └───unnoba
+    │   │   │               └───pdyc2026
+    │   │   │                   └───events
+    │   │   │                       │   EventsApplication.java
+    │   │   │                       │   
+    │   │   │                       ├───config
+    │   │   │                       │       KeycloakAdminConfig.java
+    │   │   │                       │       SecurityConfig.java
+    │   │   │                       │       
+    │   │   │                       ├───controller
+    │   │   │                       │       AdminUserController.java
+    │   │   │                       │       ArtistController.java
+    │   │   │                       │       AuthController.java
+    │   │   │                       │       EventController.java
+    │   │   │                       │       GlobalExceptionHandler.java
+    │   │   │                       │       PublicArtistController.java
+    │   │   │                       │       PublicEventController.java
+    │   │   │                       │       UserActionController.java
+    │   │   │                       │       
+    │   │   │                       ├───dto
+    │   │   │                       │       AddArtistRequest.java
+    │   │   │                       │       ArtistResponse.java
+    │   │   │                       │       CreateAdminUserRequest.java
+    │   │   │                       │       CreateArtistRequest.java
+    │   │   │                       │       CreateEventRequest.java
+    │   │   │                       │       EventDetail.java
+    │   │   │                       │       EventSummary.java
+    │   │   │                       │       FavoriteEventRequest.java
+    │   │   │                       │       FollowArtistRequest.java
+    │   │   │                       │       NotificationResponse.java
+    │   │   │                       │       RegisterRequest.java
+    │   │   │                       │       RescheduleRequest.java
+    │   │   │                       │       UpdateArtistRequest.java
+    │   │   │                       │       UpdateEventRequest.java
+    │   │   │                       │       UpdateNotificationRequest.java
+    │   │   │                       │       
+    │   │   │                       ├───model
+    │   │   │                       │       Artist.java
+    │   │   │                       │       Event.java
+    │   │   │                       │       EventStatus.java
+    │   │   │                       │       Genre.java
+    │   │   │                       │       Notification.java
+    │   │   │                       │       User.java
+    │   │   │                       │       
+    │   │   │                       ├───repository
+    │   │   │                       │       ArtistRepository.java
+    │   │   │                       │       EventRepository.java
+    │   │   │                       │       NotificationRepository.java
+    │   │   │                       │       UserRepository.java
+    │   │   │                       │       
+    │   │   │                       └───service
+    │   │   │                               AdminUserService.java
+    │   │   │                               ArtistService.java
+    │   │   │                               AuthService.java
+    │   │   │                               EventService.java
+    │   │   │                               NotificationService.java
+    │   │   │                               UserActionService.java
+    │   │   │                               
+    │   │   └───resources
+    │   │       │   application.properties
+    │   │       │   
+    │   │       ├───static
+    │   │       └───templates
+    │   └───test
+    │       └───java
+    │           └───ar
+    │               └───edu
+    │                   └───unnoba
+    │                       └───pdyc2026
+    │                           └───events
+    │                                   EventsApplicationTests.java
+    │                                   
+    └───target
+        ├───classes
+        │   │   application.properties
+        │   │   
+        │   └───ar
+        │       └───edu
+        │           └───unnoba
+        │               └───pdyc2026
+        │                   └───events
+        │                       │   EventsApplication.class
+        │                       │   
+        │                       ├───config
+        │                       │       KeycloakAdminConfig.class
+        │                       │       SecurityConfig.class
+        │                       │       
+        │                       ├───controller
+        │                       │       AdminUserController.class
+        │                       │       ArtistController.class
+        │                       │       AuthController.class
+        │                       │       EventController.class
+        │                       │       GlobalExceptionHandler.class
+        │                       │       PublicArtistController.class
+        │                       │       PublicEventController.class
+        │                       │       UserActionController.class
+        │                       │       
+        │                       ├───dto
+        │                       │       AddArtistRequest.class
+        │                       │       ArtistResponse.class
+        │                       │       CreateAdminUserRequest.class
+        │                       │       CreateArtistRequest.class
+        │                       │       CreateEventRequest.class
+        │                       │       EventDetail.class
+        │                       │       EventSummary.class
+        │                       │       FavoriteEventRequest.class
+        │                       │       FollowArtistRequest.class
+        │                       │       NotificationResponse.class
+        │                       │       RegisterRequest.class
+        │                       │       RescheduleRequest.class
+        │                       │       UpdateArtistRequest.class
+        │                       │       UpdateEventRequest.class
+        │                       │       UpdateNotificationRequest.class
+        │                       │       
+        │                       ├───model
+        │                       │       Artist.class
+        │                       │       Event.class
+        │                       │       EventStatus.class
+        │                       │       Genre.class
+        │                       │       Notification.class
+        │                       │       User.class
+        │                       │       
+        │                       ├───repository
+        │                       │       ArtistRepository.class
+        │                       │       EventRepository.class
+        │                       │       NotificationRepository.class
+        │                       │       UserRepository.class
+        │                       │       
+        │                       └───service
+        │                               AdminUserService.class
+        │                               ArtistService.class
+        │                               AuthService.class
+        │                               EventService.class
+        │                               NotificationService.class
+        │                               UserActionService.class
+        │                               
+        ├───generated-sources
+        │   └───annotations
+        ├───generated-test-sources
+        │   └───test-annotations
+        └───test-classes
+            └───ar
+                └───edu
+                    └───unnoba
+                        └───pdyc2026
+                            └───events
+                                    EventsApplicationTests.class
 ```
 
 > El archivo `.env` está excluido del repositorio mediante `.gitignore`. Cada desarrollador debe crearlo localmente.
@@ -128,6 +321,8 @@ El archivo `events/src/main/resources/application.properties` ya contiene:
 server.port=8081
 spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:8080/realms/unnoba
 
+spring.config.import=optional:file:.env[.properties]
+
 # Base de datos (usa variables del .env)
 spring.datasource.url=jdbc:postgresql://localhost:5432/${DB_NAME}
 spring.datasource.username=${DB_USERNAME}
@@ -154,71 +349,115 @@ La aplicación se levantará en **http://localhost:8081**. Todos los endpoints r
 
 ## Endpoints disponibles
 
-La API expone los siguientes recursos:
+**Endpoints públicos (no requieren token)**
 
-**Artists**
+| Método | Endpoint | Descripción |
+| ------ | -------- | ----------- |
+| GET    | /artists | Lista de artistas activos (opcional filtro por género) |
+| GET    | /artists/{artistId}/events | Próximos eventos (confirmados o reprogramados) de un artista específico |
+| GET    | /events | Lista de eventos vigentes y próximos (confirmados o reprogramados) |
+| GET    | /events/{eventId} | Detalle de un evento (solo si no está en estado tentative) |
+| POST   | /auth/register | Registro de nuevo usuario (crea en Keycloak y en BD local) |
 
-| Método | Endpoint                     | Descripción                                  |
-| ------ | ---------------------------- | -------------------------------------------- |
-| GET    | /admin/artists?genre={genre} | Lista artistas (filtro opcional por género)  |
-| GET    | /admin/artists/{id}          | Obtener artista por ID                       |
-| POST   | /admin/artists               | Crear nuevo artista                          |
-| PUT    | /admin/artists/{id}          | Actualizar artista                           |
-| DELETE | /admin/artists/{id}          | Eliminar o desactivar artista                |
+**Endpoints para usuarios autenticados (/me/*)**
 
-**Events**
+Todos los endpoints bajo `/me` requieren un token JWT válido (cualquier usuario autenticado).
 
-| Método | Endpoint                              | Descripción                                             |
-| ------ | ------------------------------------- | ------------------------------------------------------- |
-| GET    | /admin/events?state={state}           | Lista eventos (filtro opcional por estado)              |
-| GET    | /admin/events/{id}                    | Obtener evento con detalle + artistas                   |
-| POST   | /admin/events                         | Crear evento (estado inicial tentative)                 |
-| PUT    | /admin/events/{id}                    | Actualizar evento (solo si tentative)                   |
-| DELETE | /admin/events/{id}                    | Eliminar evento (solo si tentative)                     |
-| POST   | /admin/events/{id}/artists            | Agregar un artista al evento (solo si estado tentative) |
-| DELETE | /admin/events/{id}/artist/{artist_id} | Quitar un artista del evento (solo si estado tentative) |
-| PUT	 | /admin/events/{id}/confirmed	         | Confirmar evento (cambia a confirmed)                   |
-| PUT	 | /admin/events/{id}/rescheduled        | Reprogramar evento (cambia a rescheduled)               |
-| PUT	 | /admin/events/{id}/canceled	         | Cancelar evento (cambia a canceled)                     |
+| Método | Endpoint | Descripción |
+| ------ | -------- | ----------- |
+| POST   | /me/following | Seguir a un artista (body: { "artistId": <id> }) |
+| DELETE | /me/following/{artistId} | Dejar de seguir a un artista |
+| GET    | /me/following | Listar los artistas que sigo |
+| GET    | /me/following/events | Próximos eventos de artistas que sigo (ordenados por fecha) |
+| POST   | /me/favorite-events | Marcar un evento como favorito (body: { "eventId": <id> }) |
+| DELETE | /me/favorite-events/{eventId} | Quitar un evento de favoritos |
+| GET    | /me/favorite-events | Listar mis eventos favoritos que aún están vigentes |
+| GET	   | /me/notifications | Obtener todas mis notificaciones |
+| PATCH	 | /me/notifications/{id} | Marcar una notificación como leída (body: { "is_read": true }) |
+| DELETE | 	/me/notifications/{id} | Eliminar una notificación (solo si pertenece al usuario autenticado) |
 
-**Usuarios administradores (CRUD contra Keycloak)**
+**Endpoints de administración (/admin/*)**
 
-| Método | Endpoint	             | Descripción                          |
-| ------ | --------------------- | ------------------------------------ |
-| GET	 | /admin/users	         | Listar todos los usuarios del realm  |
-| GET	 | /admin/users/{userId} | Obtener un usuario por ID            |
-| POST	 | /admin/users          | Crear un nuevo usuario administrador |
-| DELETE | /admin/users/{userId} | Eliminar un usuario                  |
+Requerirán token JWT y rol `admin`.
+
+| Método | Endpoint | Descripción |
+| ------ | -------- | ----------- |
+| GET	   | /admin/artists | Lista de artistas (filtro opcional por género) |
+| GET	   | /admin/artists/{id} | Obtener artista por ID |
+| POST	 | /admin/artists | Crear nuevo artista |
+| PUT    | /admin/artists/{id} | Actualizar artista |
+| DELETE | /admin/artists/{id} | Eliminar o desactivar artista |
+| GET    | /admin/events | Lista de eventos (filtro opcional por estado) |
+| GET    | /admin/events/{id} | Obtener evento con detalle + artistas |
+| POST   | /admin/events | Crear evento (estado inicial tentative) |
+| PUT    | /admin/events/{id} | Actualizar evento (solo si tentative) |
+| DELETE | /admin/events/{id} | Eliminar evento (solo si tentative) |
+| POST   | /admin/events/{id}/artists | Agregar artista al evento (solo si tentative) |
+| DELETE | /admin/events/{id}/artist/{artistId} | Quitar artista del evento (solo si tentative) |
+| PUT    | /admin/events/{id}/confirmed | Confirmar evento (cambia a confirmed) |
+| PUT    | /admin/events/{id}/rescheduled | Reprogramar evento (cambia a rescheduled) |
+| PUT    | /admin/events/{id}/canceled | Cancelar evento (cambia a canceled) |
+| GET    | /admin/users | Listar todos los usuarios administradores (de Keycloak) |
+| GET    | /admin/users/{userId} | Obtener un administrador por ID |
+| POST   | /admin/users | Crear un nuevo administrador (asigna rol admin en Keycloak) |
+|DELETE  | /admin/users/{userId} | Eliminar un administrador |
 
 ## Cómo probar los endpoints con Postman
 
-1. Configurar `OAuth2` en Postman (flujo Authorization Code):
+**Obtener token (Authorization Code Flow)**
+
+1. Crear una nueva request en Postman.
+2. En la pestaña `Authorization`, seleccioná `OAuth 2.0`.
+3. En Configure New Token:
   - Auth URL: **http://localhost:8080/realms/unnoba/protocol/openid-connect/auth**
   - Access Token URL: **http://localhost:8080/realms/unnoba/protocol/openid-connect/token**
   - Client ID: pdyc
   - Client Secret: el generado en Keycloak
   - Callback URL: **https://oauth.pstmn.io/v1/callback**
   - Scope: openid
-2. Obtener un token: hacé clic en `Get New Access Token` y logueate con el usuario creado en Keycloak (ej. testuser).
-3. Usar el token: en la pestaña `Authorization` de cada request, seleccioná `OAuth 2.0` y elegí el token obtenido. Postman lo enviará automáticamente en el header `Authorization: Bearer <token>`.
-4. Probar cualquier endpoint
+  - Grant Type: Authorization Code
+  - Client Authentication: Send client credentials in body
+4. Hacé clic en `Get New Access Token` y logueate con el usuario creado en Keycloak (ej. testuser).
+5. Postman obtendrá un access token y un refresh token (este último se almacena automáticamente).
+
+**Usar el Refresh Token (para renovar automáticamente)**
+
+En la misma configuración de `OAuth 2.0`, marcá la opción `Auto-refresh token` (si está disponible) o simplemente, cuando el access token expire, volvé a hacer clic en Get New Access Token; Postman utilizará el refresh token para obtener uno nuevo sin pedir credenciales.
+
+**Probar endpoints**
+
+- Seleccioná el token obtenido en el dropdown de la pestaña Authorization.
+- Realizá las requests a los endpoints deseados.
 
 ## Reglas de negocio
 
-- Artista:
+- **Artista:**
+  - Un artista puede ser eliminado físicamente solo si no ha participado en ningún evento.
   - Si ha participado en algún evento, no se borra: se desactiva (active=false).
   - Desactivado no puede agregarse a nuevos eventos.
-- Evento:
+- **Evento:**
   - Estado tentative: permite modificar cualquier campo, agregar/quitar artistas, eliminar.
   - confirmed o rescheduled: solo permiten cancelar o reprogramar (fecha futura).
   - Solo se confirma si la fecha es futura.
   - Reprogramación solo a fecha futura.
+- **Usuarios finales:**
+  - Un usuario puede seguir a varios artistas y marcar varios eventos como favoritos.
+  - Al cambiar un evento a confirmed, rescheduled o canceled, se generan notificaciones para:
+    - Todos los usuarios que siguen a algún artista que participa en el evento.
+    - Todos los usuarios que tienen el evento en su lista de favoritos.
+  - Las notificaciones incluyen el estado anterior y el nuevo, y se almacenan con fecha de creación y flag isRead.
+- **Notificaciones**
+  - Los endpoints de notificaciones verifican que la notificación pertenezca al usuario autenticado (`me`) para evitar accesos indebidos.
+
 
 ## Solución de problemas
 
-| Problema	                                 | Posible causa y solución                                                                          |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| 401 Unauthorized	                         | Token inválido o expirado. Volver a obtener token en Postman.                                     |
-| 500 Internal Server Error al crear usuario | Falta el rol manage-users en el service account del client. Asignarlo en Keycloak.                |
-| Connection refused                         | Keycloak no está corriendo (Docker) o el backend no está en puerto 8081.                          |
+| Problema                                   | Posible causa y solución |
+| ------------------------------------------ | ------------------------ |
+| 401 Unauthorized                           | Token inválido o expirado. Volver a obtener token en Postman. |
+| 403 Forbidden en /admin/**                 | El usuario no tiene rol admin. Asignar el rol en Keycloak. |
+| 500 Internal Server Error al crear usuario | Falta el rol manage-users en el service account del client. Asignarlo en Keycloak. |
+| Connection refused                         | Keycloak no está corriendo (Docker) o el backend no está en puerto 8081. |
 | JwtDecoder error                           | Verificar que issuer-uri apunte correctamente al realm (**http://localhost:8080/realms/unnoba**). |
+| No se generan notificaciones               | Asegurar que el evento tenga artistas asignados y que existan usuarios siguiéndolos o con favoritos. |
+| Registro de usuario falla                  | Verificar que el cliente pdyc tenga configurado Service account roles y el rol manage-users. |
