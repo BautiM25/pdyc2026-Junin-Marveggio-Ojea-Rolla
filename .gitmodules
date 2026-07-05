@@ -1,0 +1,18 @@
+[submodule "catalog-event-service"]
+	path = catalog-event-service
+	url = https://github.com/BautiM25/catalog-event-service.git
+[submodule "config-server"]
+	path = config-server
+	url = https://github.com/BautiM25/config-server.git
+[submodule "discovery"]
+	path = discovery
+	url = https://github.com/BautiM25/discovery.git
+[submodule "gateway"]
+	path = gateway
+	url = https://github.com/BautiM25/gateway.git
+[submodule "notification-service"]
+	path = notification-service
+	url = https://github.com/BautiM25/notification-service.git
+[submodule "user-service"]
+	path = user-service
+	url = https://github.com/BautiM25/user-service.git
